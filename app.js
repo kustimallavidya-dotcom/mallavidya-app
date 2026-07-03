@@ -1,4 +1,3 @@
-
 // ================================================================
 // मल्लविद्या कुस्ती केंद्र — V2 Application Script
 // Feature 11: Safe V1→V2 Data Migration + IndexedDB Primary Storage
@@ -1494,6 +1493,3 @@ function validatePin() {
     if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
   }
 }
-Clicking...Pressing key...Stopping...
-
-Stop Agent
