@@ -1390,104 +1390,14 @@ async function generateMonthlyPDF() {
   return { pdf, filename, wrestler: w, canvas };
 }
 
-
-// Rounded rectangle path helper
-    const hGrad = ctx.createLinearGradient(x, y, x, y + 38);
-    hGrad.addColorStop(0, '#374151'); hGrad.addColorStop(1, '#1f2937');
-    ctx.fillStyle = hGrad; roundRect(ctx, x, y, 460, 38, 8); ctx.fill();
-    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText('तारीख', x + 15, y + 25);
-    ctx.textAlign = 'center'; ctx.fillText('सकाळ', x + 120, y + 25);
-    ctx.fillText('संध्याकाळ', x + 200, y + 25);
-    ctx.textAlign = 'left'; ctx.fillText('कारण', x + 260, y + 25);
-  };
-
-  drawHeader(120, 850);
-  drawHeader(620, 850);
-
-  const dateRows = window._lastReportDateRows || [];
-  let leftY = 895;
-  let rightY = 895;
-
-  dateRows.forEach((row, i) => {
-    const dObj = new Date(row.date);
-    const dateLabel = `${String(dObj.getDate()).padStart(2,'0')}/${String(dObj.getMonth()+1).padStart(2,'0')}`;
-    const mStr = row.mPresent === null ? '-' : (row.mPresent ? '✓' : '✗');
-    const mCol = row.mPresent === null ? '#9ca3af' : (row.mPresent ? '#10b981' : '#ef4444');
-    const eStr = row.ePresent === null ? '-' : (row.ePresent ? '✓' : '✗');
-    const eCol = row.ePresent === null ? '#9ca3af' : (row.ePresent ? '#10b981' : '#ef4444');
-    const reasons = [row.mReason, row.eReason].filter(Boolean).join(', ');
-
-    if (i < 15) {
-      drawRow(120, leftY, dateLabel, mStr, mCol, eStr, eCol, reasons || '-');
-      leftY += 38;
-    } else {
-      drawRow(620, rightY, dateLabel, mStr, mCol, eStr, eCol, reasons || '-');
-      rightY += 38;
-    }
-  });
-
-  // Reasons box (moved down to y=1490)
-  const contentY = 1490;
-  ctx.textAlign = 'left'; ctx.fillStyle = '#ffffff';
-  roundRect(ctx, 120, contentY, 960, 150, 16); ctx.fill();
-  ctx.strokeStyle = '#fdba74'; ctx.lineWidth = 2; roundRect(ctx, 120, contentY, 960, 150, 16); ctx.stroke();
-  ctx.fillStyle = '#9a3412'; ctx.font = 'bold 22px sans-serif';
-  ctx.fillText('गैरहजेरीची कारणे (Absence Summary):', 150, contentY + 35);
-  ctx.font = '18px sans-serif'; ctx.fillStyle = '#4b5563';
-  let reasonY = contentY + 70;
-  Array.from(document.getElementById('report-reasons-list').children).forEach(li => {
-    ctx.fillText(li.innerText, 160, reasonY); reasonY += 28;
-  });
-
-  // Remarks box
-  ctx.fillStyle = '#fffbeb'; roundRect(ctx, 120, contentY + 170, 960, 140, 16); ctx.fill();
-  ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2; roundRect(ctx, 120, contentY + 170, 960, 140, 16); ctx.stroke();
-  ctx.fillStyle = '#92400e'; ctx.font = 'bold 22px sans-serif';
-  ctx.fillText('प्रगतीपुस्तक शेरा (Progress Evaluation):', 150, contentY + 210);
-  ctx.fillStyle = '#1f2937'; ctx.font = 'italic 20px sans-serif';
-  wrapText(ctx, remarkText, 150, contentY + 250, 900, 30);
-
-  // Professional Footer Area with VASTAD's name prominently
-  ctx.strokeStyle = '#fdba74'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(100, 1830); ctx.lineTo(1100, 1830); ctx.stroke();
-  
-  // Seal / Badge element
-  ctx.fillStyle = '#f59e0b';
-  ctx.beginPath(); ctx.arc(600, 1890, 45, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#7c2d12'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('MKK', 600, 1895);
-
-  ctx.fillStyle = '#7c2d12'; ctx.font = 'bold 32px sans-serif'; ctx.textAlign = 'right';
-  ctx.fillText('वस्ताद: राहुल नारायण जाधव', 530, 1890);
-  
-  ctx.fillStyle = '#ea580c'; ctx.font = '22px sans-serif'; ctx.textAlign = 'right';
-  ctx.fillText('मुख्य प्रशिक्षक व संस्थापक', 530, 1925);
-
-  ctx.strokeStyle = '#9ca3af'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(670, 1900); ctx.lineTo(950, 1900); ctx.stroke();
-  ctx.fillStyle = '#9ca3af'; ctx.font = '18px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('(सही / स्वाक्षरी)', 810, 1925);
-
-  ctx.fillStyle = '#7c2d12'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('मल्लविद्या कुस्ती केंद्र - अखंड परंपरा, आधुनिक तंत्रज्ञान', 600, 1975);
-
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF('p', 'mm', 'a4');
-  const imgData = canvas.toDataURL('image/jpeg', 0.95);
-  pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
-  const filename = `${w.name}_${monthStr}_रिपोर्ट.pdf`;
-  pdf.save(filename);
-
-
-
-
+function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
   ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
   ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
   ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
 }
+
 
 function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
   const words = text.split(' '); let line = '';
