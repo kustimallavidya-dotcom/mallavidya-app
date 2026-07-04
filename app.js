@@ -409,14 +409,33 @@ function previewWrestlerPhoto(event) {
   if (file) {
     const reader = new FileReader();
     reader.onload = function(e) {
-      currentUploadedPhotoBase64 = e.target.result;
-      const previewImg = document.getElementById('form-photo-preview');
-      const placeholderIcon = document.getElementById('photo-placeholder-icon');
-      if (previewImg && placeholderIcon) {
-        previewImg.src = currentUploadedPhotoBase64;
-        previewImg.classList.remove('hidden');
-        placeholderIcon.classList.add('hidden');
-      }
+      const img = new Image();
+      img.onload = function() {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 400;
+        const MAX_HEIGHT = 400;
+        let width = img.width;
+        let height = img.height;
+        if (width > height) {
+          if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+        } else {
+          if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        currentUploadedPhotoBase64 = canvas.toDataURL('image/jpeg', 0.85);
+        const previewImg = document.getElementById('form-photo-preview');
+        const placeholderIcon = document.getElementById('photo-placeholder-icon');
+        if (previewImg && placeholderIcon) {
+          previewImg.src = currentUploadedPhotoBase64;
+          previewImg.classList.remove('hidden');
+          placeholderIcon.classList.add('hidden');
+        }
+      };
+      img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   }
@@ -703,12 +722,15 @@ function switchTab(viewId) {
   navIds.forEach(key => {
     const btn = document.getElementById(`nav-${key}`);
     if (!btn) return;
+    const pip = btn.querySelector(`.nav-pip-${key}`);
     if (key === viewId) {
-      btn.classList.add('text-clay-900', 'font-bold');
-      btn.classList.remove('text-gray-400');
+      btn.style.color = document.documentElement.classList.contains('dark') ? '#eab308' : '#7c2d12';
+      btn.style.fontWeight = '800';
+      if (pip) { pip.style.background = '#ea580c'; pip.style.transform = 'scaleX(1)'; }
     } else {
-      btn.classList.remove('text-clay-900', 'font-bold');
-      btn.classList.add('text-gray-400');
+      btn.style.color = '#9ca3af';
+      btn.style.fontWeight = '400';
+      if (pip) { pip.style.background = 'transparent'; }
     }
   });
 
@@ -1101,13 +1123,15 @@ function updateWrestlerWeight() {
 // PDF GENERATION — Returns { pdf, filename, wrestler, canvas }
 // FEATURE 12: Includes full dual-session month table in PDF
 // ================================================================
+// ================================================================
+// PDF GENERATION — Beautiful Premium Report Card
+// ================================================================
 async function generateMonthlyPDF() {
   const wrestlerId = document.getElementById('report-wrestler-select').value;
   const monthStr   = document.getElementById('report-month-select').value;
 
   if (!wrestlerId || !monthStr) { alert('कृपया मल्ल आणि महिना निवडा.'); return null; }
 
-  // Refresh overview first (to ensure _lastReportDateRows is current)
   loadWrestlerReportOverview();
 
   const w = activeWrestlers.find(x => x.id === wrestlerId);
@@ -1122,109 +1146,268 @@ async function generateMonthlyPDF() {
   const parts = monthStr.split('-');
   const displayMonth = `${monthsMarathi[parts[1]]} ${parts[0]}`;
 
+  // Canvas: A4 portrait at 150dpi equivalent
+  const W = 1240; const H = 1754;
   const canvas = document.createElement('canvas');
-  canvas.width = 1200; canvas.height = 2000;
+  canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
 
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 1200, 2000);
-  ctx.strokeStyle = '#a3331b'; ctx.lineWidth = 12; ctx.strokeRect(20, 20, 1160, 1960);
-  ctx.strokeStyle = '#ea580c'; ctx.lineWidth = 4; ctx.strokeRect(35, 35, 1130, 1930);
+  // ============ BACKGROUND ============
+  ctx.fillStyle = '#fff8f0';
+  ctx.fillRect(0, 0, W, H);
 
+  // Side accent stripe
+  const stripeGrad = ctx.createLinearGradient(0, 0, 0, H);
+  stripeGrad.addColorStop(0, '#7c2d12'); stripeGrad.addColorStop(0.5, '#ea580c'); stripeGrad.addColorStop(1, '#7c2d12');
+  ctx.fillStyle = stripeGrad;
+  ctx.fillRect(0, 0, 16, H);
+
+  // Gold border line next to stripe
+  ctx.fillStyle = '#f59e0b'; ctx.fillRect(16, 0, 4, H);
+
+  // ============ HEADER SECTION ============
+  const headerGrad = ctx.createLinearGradient(0, 0, W, 0);
+  headerGrad.addColorStop(0, '#450a0a'); headerGrad.addColorStop(0.5, '#7c2d12'); headerGrad.addColorStop(1, '#450a0a');
+  ctx.fillStyle = headerGrad; ctx.fillRect(20, 0, W - 20, 300);
+
+  // Decorative dots pattern in header
+  ctx.fillStyle = 'rgba(245,158,11,0.08)';
+  for (let i = 0; i < 20; i++) for (let j = 0; j < 6; j++) {
+    ctx.beginPath(); ctx.arc(80 + i * 60, 20 + j * 50, 4, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Load logo
   const logoImg = new Image();
   logoImg.src = 'logo.jpg';
   await new Promise(res => { logoImg.onload = res; logoImg.onerror = res; setTimeout(res, 3000); });
 
+  // Load wrestler photo
   let wrestlerImg = null;
   if (w.photo) {
     wrestlerImg = new Image(); wrestlerImg.src = w.photo;
     await new Promise(res => { wrestlerImg.onload = res; wrestlerImg.onerror = res; setTimeout(res, 3000); });
   }
 
-  // Logo circle
+  // Logo circle in header
+  const logoX = 90, logoY = 150, logoR = 70;
   ctx.save();
-  ctx.beginPath(); ctx.arc(600, 160, 70, 0, Math.PI * 2); ctx.closePath(); ctx.clip();
-  if (logoImg.complete && logoImg.naturalWidth > 0) ctx.drawImage(logoImg, 530, 90, 140, 140);
-  else { ctx.fillStyle = '#7c2d12'; ctx.fill(); }
-  ctx.restore();
+  // Glow
+  ctx.shadowColor = 'rgba(245,158,11,0.6)'; ctx.shadowBlur = 20;
   ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 5;
-  ctx.beginPath(); ctx.arc(600, 160, 70, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(logoX, logoY, logoR + 3, 0, Math.PI * 2); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.beginPath(); ctx.arc(logoX, logoY, logoR, 0, Math.PI * 2); ctx.closePath(); ctx.clip();
+  if (logoImg.complete && logoImg.naturalWidth > 0) ctx.drawImage(logoImg, logoX - logoR, logoY - logoR, logoR * 2, logoR * 2);
+  else { ctx.fillStyle = '#3b1a0f'; ctx.fill(); }
+  ctx.restore();
 
-  ctx.fillStyle = '#7c2d12'; ctx.font = 'bold 44px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('मल्लविद्या कुस्ती केंद्र', 600, 280);
-  ctx.fillStyle = '#ea580c'; ctx.font = 'bold 26px sans-serif';
-  ctx.fillText('तालीम व मल्ल विकास प्रगतीपत्रक', 600, 322);
-  ctx.fillStyle = '#4b5563'; ctx.font = '22px sans-serif';
-  ctx.fillText(`महिन्याचा अहवाल: ${displayMonth}`, 600, 358);
+  // Center title text
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fde047';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 6;
+  ctx.font = 'bold 52px "Noto Serif Devanagari", serif';
+  ctx.fillText('मल्लविद्या कुस्ती केंद्र', W / 2 + 40, 140);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font = '28px "Noto Serif Devanagari", serif';
+  ctx.fillText('तालीम व मल्ल विकास प्रगतीपत्रक', W / 2 + 40, 195);
+  ctx.fillStyle = '#fde047'; ctx.font = 'bold 24px sans-serif';
+  ctx.fillText(`मासिक अहवाल: ${displayMonth}`, W / 2 + 40, 240);
 
-  ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(100, 390); ctx.lineTo(1100, 390); ctx.stroke();
+  // ============ WRESTLER INFO CARD ============
+  // White card area
+  roundRect(ctx, 20, 310, W - 40, 200, 0); ctx.fillStyle = '#ffffff'; ctx.fill();
 
-  ctx.textAlign = 'left'; ctx.fillStyle = '#111827';
-  ctx.font = 'bold 28px sans-serif'; ctx.fillText(`मल्लाचे नाव: ${w.name}`, 120, 440);
-  ctx.font = '22px sans-serif';
-  ctx.fillText(`वय: ${w.age} वर्ष`, 120, 488);
-  ctx.fillText(`वजन गट: ${w.weightClass}`, 120, 534);
-  ctx.fillText(`पालकांचे नाव: ${w.parentName}`, 600, 488);
-  ctx.fillText(`WhatsApp: +91 ${w.whatsapp}`, 600, 534);
-
+  // Wrestler photo (right side)
+  const photoX = W - 160, photoY = 410, photoR = 80;
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 15;
+  ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(photoX, photoY, photoR + 4, 0, Math.PI * 2); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.beginPath(); ctx.arc(photoX, photoY, photoR, 0, Math.PI * 2); ctx.closePath(); ctx.clip();
   if (wrestlerImg && wrestlerImg.complete && wrestlerImg.naturalWidth > 0) {
-    ctx.save(); ctx.beginPath(); ctx.arc(1010, 490, 55, 0, Math.PI * 2); ctx.closePath(); ctx.clip();
-    ctx.drawImage(wrestlerImg, 955, 435, 110, 110); ctx.restore();
-    ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(1010, 490, 56, 0, Math.PI * 2); ctx.stroke();
+    ctx.drawImage(wrestlerImg, photoX - photoR, photoY - photoR, photoR * 2, photoR * 2);
   } else {
-    ctx.fillStyle = '#7c2d12'; ctx.beginPath(); ctx.arc(1010, 490, 55, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 44px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(w.name.charAt(0), 1010, 505); ctx.textAlign = 'left';
+    ctx.fillStyle = '#7c2d12'; ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 64px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(w.name.charAt(0).toUpperCase(), photoX, photoY + 22);
   }
+  ctx.restore();
 
-  ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(100, 580); ctx.lineTo(1100, 580); ctx.stroke();
+  // Wrestler info text
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#7c2d12'; ctx.font = 'bold 38px "Noto Serif Devanagari", serif';
+  ctx.fillText(w.name, 60, 380);
 
-  // Stat boxes
-  [
-    { x: 120, bg: '#ecfdf5', stroke: '#10b981', fg: '#065f46', label: 'एकूण उपस्थित', val: presentVal, cx: 260 },
-    { x: 460, bg: '#fef2f2', stroke: '#ef4444', fg: '#991b1b', label: 'एकूण अनुपस्थित', val: absentVal, cx: 600 },
-    { x: 800, bg: '#fffbeb', stroke: '#f59e0b', fg: '#92400e', label: 'हजेरी टक्केवारी', val: percentVal, cx: 940 }
-  ].forEach(box => {
-    ctx.fillStyle = box.bg; roundRect(ctx, box.x, 620, 280, 120, 12); ctx.fill();
-    ctx.strokeStyle = box.stroke; ctx.lineWidth = 1.5; roundRect(ctx, box.x, 620, 280, 120, 12); ctx.stroke();
-    ctx.fillStyle = box.fg; ctx.font = 'bold 22px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(box.label, box.cx, 655);
-    ctx.font = 'bold 36px sans-serif'; ctx.fillText(box.val, box.cx, 710);
+  // Tag pills
+  const drawPill = (x, y, label, val, bg, fg) => {
+    const w2 = 240;
+    roundRect(ctx, x, y, w2, 44, 12);
+    ctx.fillStyle = bg; ctx.fill();
+    ctx.fillStyle = fg; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(label + ': ' + val, x + 14, y + 28);
+  };
+  drawPill(60, 400, 'वय', `${w.age} वर्ष`, '#fff7ed', '#9a3412');
+  drawPill(320, 400, 'गट', w.weightClass, '#ecfdf5', '#065f46');
+  drawPill(60, 460, 'पालक', w.parentName, '#eff6ff', '#1e40af');
+  drawPill(320, 460, 'WhatsApp', '+91 ' + w.whatsapp, '#f0fdf4', '#166534');
+
+  // ============ ORANGE DIVIDER ============
+  ctx.fillStyle = '#ea580c'; ctx.fillRect(20, 510, W - 40, 4);
+
+  // ============ STATS SECTION ============
+  const statsY = 530;
+  const drawStatCard = (x, y, cw, ch, icon, label, val, bg1, bg2, border, fg) => {
+    const g = ctx.createLinearGradient(x, y, x, y + ch);
+    g.addColorStop(0, bg1); g.addColorStop(1, bg2);
+    roundRect(ctx, x, y, cw, ch, 18); ctx.fillStyle = g; ctx.fill();
+    ctx.strokeStyle = border; ctx.lineWidth = 2; roundRect(ctx, x, y, cw, ch, 18); ctx.stroke();
+
+    ctx.fillStyle = fg; ctx.textAlign = 'center';
+    ctx.font = 'bold 18px sans-serif'; ctx.fillText(label, x + cw / 2, y + 40);
+    ctx.font = 'bold 52px Poppins, sans-serif'; ctx.fillText(val, x + cw / 2, y + 100);
+    ctx.font = '30px sans-serif'; ctx.fillText(icon, x + cw / 2, y + 135);
+  };
+
+  const sw = (W - 80) / 3 - 12;
+  drawStatCard(30, statsY, sw, 155, '✅', 'उपस्थित सत्रे', presentVal, '#f0fdf4', '#dcfce7', '#10b981', '#065f46');
+  drawStatCard(30 + sw + 12, statsY, sw, 155, '❌', 'अनुपस्थित', absentVal, '#fef2f2', '#fee2e2', '#ef4444', '#7f1d1d');
+  drawStatCard(30 + (sw + 12) * 2, statsY, sw, 155, '📊', 'हजेरी %', percentVal, '#fffbeb', '#fef3c7', '#f59e0b', '#78350f');
+
+  // Progress bar
+  const pct = parseInt(percentVal) || 0;
+  ctx.fillStyle = '#e5e7eb'; roundRect(ctx, 30, 700, W - 60, 18, 9); ctx.fill();
+  const barColor = pct >= 90 ? '#10b981' : pct >= 75 ? '#f59e0b' : '#ef4444';
+  if (pct > 0) { ctx.fillStyle = barColor; roundRect(ctx, 30, 700, Math.round((W - 60) * pct / 100), 18, 9); ctx.fill(); }
+  ctx.fillStyle = '#374151'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText(`${pct}% हजेरी`, W - 30, 695);
+
+  // ============ ATTENDANCE TABLE SECTION ============
+  // Section header
+  ctx.fillStyle = '#1f2937'; ctx.fillRect(20, 730, W - 40, 46);
+  ctx.fillStyle = '#f59e0b'; ctx.font = 'bold 22px "Noto Serif Devanagari", serif'; ctx.textAlign = 'left';
+  ctx.fillText('📅  दिनांकनिहाय हजेरी (सकाळ व संध्याकाळ)', 40, 762);
+
+  // Table header row
+  const tY = 776;
+  const colW = [120, 90, 90, 180];
+  const colX = [30, 155, 250, 345];
+  const colHeaders = ['तारीख', '🌅 सकाळ', '🌆 संध्या.', 'कारण'];
+  ctx.fillStyle = '#374151'; ctx.fillRect(20, tY, W - 40, 34);
+
+  // Two-column split
+  const col2Start = 555;
+  [0, col2Start - 20].forEach(offset => {
+    const cW2 = [100, 80, 80, 170];
+    const cX2 = [30 + offset, 135 + offset, 220 + offset, 305 + offset];
+    colHeaders.forEach((h, i) => {
+      ctx.fillStyle = '#f9fafb'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(h, cX2[i], tY + 23);
+    });
   });
 
-  // FEATURE 12: Dual-Session Attendance Table (2 Columns)
-  ctx.textAlign = 'left'; ctx.fillStyle = '#111827';
-  ctx.font = 'bold 24px sans-serif';
-  ctx.fillText('दिनांकनिहाय हजेरी (सकाळ व संध्याकाळ):', 120, 790);
-
-  const drawRow = (x, y, dText, mText, mColor, eText, eColor, rText) => {
-    ctx.fillStyle = '#f3f4f6'; ctx.fillRect(x, y, 460, 32);
-    ctx.fillStyle = '#111827'; ctx.font = '16px sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText(dText, x + 10, y + 22);
-    ctx.fillStyle = mColor; ctx.textAlign = 'center'; ctx.fillText(mText, x + 110, y + 22);
-    ctx.fillStyle = eColor; ctx.textAlign = 'center'; ctx.fillText(eText, x + 190, y + 22);
-    ctx.fillStyle = '#4b5563'; ctx.textAlign = 'left'; ctx.font = '14px sans-serif';
-    ctx.fillText(rText.substring(0, 22), x + 250, y + 21);
-  };
-
-  // Table Headers
-  const drawHeader = (x, y) => {
-    ctx.fillStyle = '#1f2937'; roundRect(ctx, x, y, 460, 36, 6); ctx.fill();
-    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText('तारीख', x + 10, y + 24);
-    ctx.textAlign = 'center'; ctx.fillText('सकाळ', x + 110, y + 24);
-    ctx.fillText('संध्याकाळ', x + 190, y + 24);
-    ctx.textAlign = 'left'; ctx.fillText('कारण', x + 250, y + 24);
-  };
-
-  drawHeader(120, 810);
-  drawHeader(620, 810);
+  // Vertical divider between 2 columns
+  ctx.fillStyle = '#6b7280'; ctx.fillRect(col2Start - 22, tY, 2, H - tY - 180);
 
   const dateRows = window._lastReportDateRows || [];
-  let leftY = 850;
-  let rightY = 850;
+  const weekdays = ['रवि','सोम','मंगळ','बुध','गुरू','शुक्र','शनि'];
+
+  let lY = tY + 34; let rY = tY + 34; const ROW_H = 32;
+  dateRows.forEach((row, i) => {
+    const dObj = new Date(row.date);
+    const dateLabel = `${String(dObj.getDate()).padStart(2,'0')} ${weekdays[dObj.getDay()]}`;
+    const mStr = row.mPresent === null ? '-' : (row.mPresent ? '✓' : '✗');
+    const mCol = row.mPresent === null ? '#9ca3af' : (row.mPresent ? '#059669' : '#dc2626');
+    const eStr = row.ePresent === null ? '-' : (row.ePresent ? '✓' : '✗');
+    const eCol = row.ePresent === null ? '#9ca3af' : (row.ePresent ? '#059669' : '#dc2626');
+    const reasons = [row.mReason, row.eReason].filter(Boolean).join(', ');
+
+    const isLeft = i < 15;
+    const x0 = isLeft ? 20 : col2Start - 20;
+    const y0 = isLeft ? lY : rY;
+    const rowW = (W - 40) / 2 - 12;
+
+    // Row background
+    ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#fafafa';
+    ctx.fillRect(x0, y0, rowW, ROW_H);
+
+    ctx.font = '15px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillStyle = '#374151'; ctx.fillText(dateLabel, x0 + 8, y0 + 21);
+    ctx.fillStyle = mCol; ctx.textAlign = 'center'; ctx.fillText(mStr, x0 + 120, y0 + 21);
+    ctx.fillStyle = eCol; ctx.fillText(eStr, x0 + 195, y0 + 21);
+    ctx.fillStyle = '#6b7280'; ctx.textAlign = 'left'; ctx.font = '13px sans-serif';
+    ctx.fillText((reasons || '-').substring(0, 18), x0 + 240, y0 + 21);
+
+    // Row border
+    ctx.strokeStyle = '#f3f4f6'; ctx.lineWidth = 1;
+    ctx.strokeRect(x0, y0, rowW, ROW_H);
+
+    if (isLeft) lY += ROW_H; else rY += ROW_H;
+  });
+
+  // ============ FOOTER: REMARKS + VASTAD ============
+  const footY = Math.max(lY, rY) + 20;
+  // Remarks
+  ctx.fillStyle = '#fffbeb'; roundRect(ctx, 20, footY, W - 40, 130, 16); ctx.fill();
+  ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2; roundRect(ctx, 20, footY, W - 40, 130, 16); ctx.stroke();
+  ctx.fillStyle = '#92400e'; ctx.font = 'bold 20px "Noto Serif Devanagari", serif'; ctx.textAlign = 'left';
+  ctx.fillText('⚡ प्रगतीपुस्तक शेरा:', 40, footY + 38);
+  ctx.fillStyle = '#1f2937'; ctx.font = 'italic 18px "Noto Serif Devanagari", serif';
+  wrapText(ctx, remarkText, 40, footY + 70, W - 100, 28);
+
+  // Vastad name footer
+  const vY = footY + 155;
+  ctx.strokeStyle = '#fdba74'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(20, vY); ctx.lineTo(W - 20, vY); ctx.stroke();
+
+  // Badge
+  ctx.fillStyle = '#7c2d12'; roundRect(ctx, W / 2 - 60, vY + 14, 120, 36, 18); ctx.fill();
+  ctx.fillStyle = '#fde047'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('मल्लविद्या', W / 2, vY + 38);
+
+  ctx.fillStyle = '#1f2937'; ctx.font = 'bold 28px "Noto Serif Devanagari", serif'; ctx.textAlign = 'left';
+  ctx.fillText('वस्ताद: राहुल नारायण जाधव', 40, vY + 42);
+  ctx.fillStyle = '#ea580c'; ctx.font = '18px sans-serif';
+  ctx.fillText('मुख्य प्रशिक्षक व संस्थापक', 40, vY + 68);
+
+  ctx.strokeStyle = '#9ca3af'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(W - 360, vY + 60); ctx.lineTo(W - 40, vY + 60); ctx.stroke();
+  ctx.fillStyle = '#9ca3af'; ctx.font = '16px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('(सही / स्वाक्षरी)', W - 200, vY + 80);
+
+  ctx.fillStyle = '#6b7280'; ctx.font = '15px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('मल्लविद्या कुस्ती केंद्र — अखंड परंपरा, आधुनिक तंत्रज्ञान', W / 2, vY + 100);
+
+  // ============ GENERATE PDF ============
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const imgData = canvas.toDataURL('image/jpeg', 0.95);
+  pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+  const filename = `${w.name}_${monthStr}_रिपोर्ट.pdf`;
+  pdf.save(filename);
+
+  return { pdf, filename, wrestler: w, canvas };
+}
+
+
+// Rounded rectangle path helper
+    const hGrad = ctx.createLinearGradient(x, y, x, y + 38);
+    hGrad.addColorStop(0, '#374151'); hGrad.addColorStop(1, '#1f2937');
+    ctx.fillStyle = hGrad; roundRect(ctx, x, y, 460, 38, 8); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('तारीख', x + 15, y + 25);
+    ctx.textAlign = 'center'; ctx.fillText('सकाळ', x + 120, y + 25);
+    ctx.fillText('संध्याकाळ', x + 200, y + 25);
+    ctx.textAlign = 'left'; ctx.fillText('कारण', x + 260, y + 25);
+  };
+
+  drawHeader(120, 850);
+  drawHeader(620, 850);
+
+  const dateRows = window._lastReportDateRows || [];
+  let leftY = 895;
+  let rightY = 895;
 
   dateRows.forEach((row, i) => {
     const dObj = new Date(row.date);
@@ -1235,46 +1418,59 @@ async function generateMonthlyPDF() {
     const eCol = row.ePresent === null ? '#9ca3af' : (row.ePresent ? '#10b981' : '#ef4444');
     const reasons = [row.mReason, row.eReason].filter(Boolean).join(', ');
 
-    if (i < 16) {
+    if (i < 15) {
       drawRow(120, leftY, dateLabel, mStr, mCol, eStr, eCol, reasons || '-');
-      leftY += 36;
+      leftY += 38;
     } else {
       drawRow(620, rightY, dateLabel, mStr, mCol, eStr, eCol, reasons || '-');
-      rightY += 36;
+      rightY += 38;
     }
   });
 
-  // Reasons box (moved down to y=1450)
-  const contentY = 1450;
-  ctx.textAlign = 'left'; ctx.fillStyle = '#f9fafb';
-  roundRect(ctx, 120, contentY, 960, 160, 12); ctx.fill();
-  ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1.5; roundRect(ctx, 120, contentY, 960, 160, 12); ctx.stroke();
-  ctx.fillStyle = '#374151'; ctx.font = 'bold 22px sans-serif';
+  // Reasons box (moved down to y=1490)
+  const contentY = 1490;
+  ctx.textAlign = 'left'; ctx.fillStyle = '#ffffff';
+  roundRect(ctx, 120, contentY, 960, 150, 16); ctx.fill();
+  ctx.strokeStyle = '#fdba74'; ctx.lineWidth = 2; roundRect(ctx, 120, contentY, 960, 150, 16); ctx.stroke();
+  ctx.fillStyle = '#9a3412'; ctx.font = 'bold 22px sans-serif';
   ctx.fillText('गैरहजेरीची कारणे (Absence Summary):', 150, contentY + 35);
-  ctx.font = '18px sans-serif';
+  ctx.font = '18px sans-serif'; ctx.fillStyle = '#4b5563';
   let reasonY = contentY + 70;
   Array.from(document.getElementById('report-reasons-list').children).forEach(li => {
     ctx.fillText(li.innerText, 160, reasonY); reasonY += 28;
   });
 
   // Remarks box
-  ctx.fillStyle = '#fffbeb'; roundRect(ctx, 120, contentY + 180, 960, 140, 12); ctx.fill();
-  ctx.strokeStyle = '#fcd34d'; ctx.lineWidth = 2; roundRect(ctx, 120, contentY + 180, 960, 140, 12); ctx.stroke();
+  ctx.fillStyle = '#fffbeb'; roundRect(ctx, 120, contentY + 170, 960, 140, 16); ctx.fill();
+  ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2; roundRect(ctx, 120, contentY + 170, 960, 140, 16); ctx.stroke();
   ctx.fillStyle = '#92400e'; ctx.font = 'bold 22px sans-serif';
-  ctx.fillText('प्रगतीपुस्तक शेरा (Progress Evaluation):', 150, contentY + 220);
+  ctx.fillText('प्रगतीपुस्तक शेरा (Progress Evaluation):', 150, contentY + 210);
   ctx.fillStyle = '#1f2937'; ctx.font = 'italic 20px sans-serif';
-  wrapText(ctx, remarkText, 150, contentY + 260, 900, 30);
+  wrapText(ctx, remarkText, 150, contentY + 250, 900, 30);
 
-  ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(100, 1820); ctx.lineTo(1100, 1820); ctx.stroke();
-  ctx.fillStyle = '#374151'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('वस्ताद: राहुल नारायण जाधव', 600, 1880);
-  ctx.strokeStyle = '#9ca3af';
-  ctx.beginPath(); ctx.moveTo(420, 1850); ctx.lineTo(780, 1850); ctx.stroke();
-  ctx.fillStyle = '#9ca3af'; ctx.font = '18px sans-serif';
-  ctx.fillText('(सही / स्वाक्षरी)', 600, 1910);
-  ctx.fillStyle = '#7c2d12'; ctx.font = '20px sans-serif';
-  ctx.fillText('मल्लविद्या कुस्ती केंद्र - अखंड परंपरा, आधुनिक तंत्रज्ञान', 600, 1960);
+  // Professional Footer Area with VASTAD's name prominently
+  ctx.strokeStyle = '#fdba74'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(100, 1830); ctx.lineTo(1100, 1830); ctx.stroke();
+  
+  // Seal / Badge element
+  ctx.fillStyle = '#f59e0b';
+  ctx.beginPath(); ctx.arc(600, 1890, 45, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#7c2d12'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('MKK', 600, 1895);
+
+  ctx.fillStyle = '#7c2d12'; ctx.font = 'bold 32px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('वस्ताद: राहुल नारायण जाधव', 530, 1890);
+  
+  ctx.fillStyle = '#ea580c'; ctx.font = '22px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('मुख्य प्रशिक्षक व संस्थापक', 530, 1925);
+
+  ctx.strokeStyle = '#9ca3af'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(670, 1900); ctx.lineTo(950, 1900); ctx.stroke();
+  ctx.fillStyle = '#9ca3af'; ctx.font = '18px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('(सही / स्वाक्षरी)', 810, 1925);
+
+  ctx.fillStyle = '#7c2d12'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('मल्लविद्या कुस्ती केंद्र - अखंड परंपरा, आधुनिक तंत्रज्ञान', 600, 1975);
 
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF('p', 'mm', 'a4');
@@ -1283,11 +1479,9 @@ async function generateMonthlyPDF() {
   const filename = `${w.name}_${monthStr}_रिपोर्ट.pdf`;
   pdf.save(filename);
 
-  return { pdf, filename, wrestler: w, canvas }; // ← canvas returned (bug fix)
-}
 
-// Rounded rectangle path helper
-function roundRect(ctx, x, y, w, h, r) {
+
+
   ctx.beginPath();
   ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
   ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
@@ -1322,39 +1516,18 @@ async function shareReportWhatsApp() {
   const parts = monthStr.split('-');
   const displayMonth = `${monthsMarathi[parts[1]]} ${parts[0]}`;
 
-  const messageText = `🏆 नमस्कार ${w.parentName} जी!\n\n*${w.name}* ची *${displayMonth}* हजेरी अहवाल:\n\nहजेरी: ${document.getElementById('report-percentage').innerText}\nउपस्थित: ${document.getElementById('report-present-count').innerText} सत्रे\nअनुपस्थित: ${document.getElementById('report-absent-count').innerText} सत्रे\n\n- मल्लविद्या कुस्ती केंद्र 🤼`;
+  const messageText = `🏆 नमस्कार ${w.parentName} जी!\n\n*${w.name}* ची *${displayMonth}* हजेरी अहवाल:\n\nहजेरी: ${document.getElementById('report-percentage').innerText}\nउपस्थित: ${document.getElementById('report-present-count').innerText} सत्रे\nअनुपस्थित: ${document.getElementById('report-absent-count').innerText} सत्रे\n\n- मल्लविद्या कुस्ती केंद्र (वस्ताद राहुल नारायण जाधव) 🤼`;
 
   const phoneClean = w.whatsapp.replace(/\D/g, '');
   const whatsappUrl = `https://wa.me/91${phoneClean}?text=${encodeURIComponent(messageText)}`;
 
-  let reportRes = null;
-  try { reportRes = await generateMonthlyPDF(); }
-  catch (err) { console.error('PDF generation error:', err); window.open(whatsappUrl, '_blank'); return; }
+  // Generate and download PDF first
+  try { await generateMonthlyPDF(); }
+  catch (err) { console.error('PDF generation error:', err); }
 
-  if (!reportRes) { window.open(whatsappUrl, '_blank'); return; }
-
-  // Attempt 1: Share PDF via Web Share API
-  try {
-    const pdfBlob = reportRes.pdf.output('blob');
-    const pdfFile = new File([pdfBlob], reportRes.filename, { type: 'application/pdf' });
-    if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-      await navigator.share({ files: [pdfFile], title: `${w.name} - प्रगती अहवाल`, text: messageText });
-      return;
-    }
-  } catch(e) { console.log('PDF share failed, trying image...', e); }
-
-  // Attempt 2: Share as PNG image (uses returned canvas — bug fixed)
-  try {
-    const pngBlob = await new Promise(resolve => reportRes.canvas.toBlob(resolve, 'image/png'));
-    const imageFile = new File([pngBlob], reportRes.filename.replace('.pdf', '.png'), { type: 'image/png' });
-    if (navigator.canShare && navigator.canShare({ files: [imageFile] })) {
-      await navigator.share({ files: [imageFile], title: `${w.name} - प्रगती अहवाल`, text: messageText });
-      return;
-    }
-  } catch(e) { console.log('Image share failed, using wa.me fallback...', e); }
-
-  // Attempt 3: Direct wa.me link fallback
-  alert('पीडीएफ डाऊनलोड झाली आहे. WhatsApp चॅट उघडत आहे — डाऊनलोड केलेली फाईल मॅन्युअली पाठवा.');
+  alert('प्रगतीपत्रक (PDF) डाऊनलोड झाले आहे. आता थेट पालकांचा WhatsApp चॅट उघडेल, तिथे डाऊनलोड केलेली फाईल मॅन्युअली पाठवा.');
+  
+  // Force open the direct chat link, bypassing the generic navigator.share
   window.open(whatsappUrl, '_blank');
 }
 
@@ -1493,3 +1666,6 @@ function validatePin() {
     if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
   }
 }
+Clicking...Pressing key...Stopping...
+
+Stop Agent
